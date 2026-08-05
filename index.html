@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>スマホつみつみタワー - 案内吹き出し軽量化版</title>
+    <!-- Matter.js 物理エンジン -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <!-- Canvas Confetti 紙吹雪 -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: #0f172a;
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+            color: #333;
+        }
+
+        #app-container {
+            width: 100vw;
+            max-width: 450px;
+            height: 100vh;
+            max-height: 800px;
+            background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+            position: relative;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            z-index: 10;
+            transition: opacity 0.3s ease;
+            overflow-y: auto;
+        }
+
+        .hidden {
+            display: none !important;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* --- アンケート画面 --- */
+        #survey-screen {
+            background: linear-gradient(135deg, #ffffff 0%, #f0f9ff 100%);
+            text-align: center;
+        }
+
+        .badge {
+            background: #0284c7;
+            color: white;
+            padding: 8px 18px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 12px;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(2, 132, 199, 0.3);
+        }
+
+        h1 {
+            font-size: 26px;
+            color: #0f172a;
+            margin: 0 0 8px 0;
+            font-weight: 800;
+        }
+
+        p.subtitle {
+            font-size: 14px;
+            color: #64748b;
+            margin-bottom: 24px;
+        }
+
+        .carrier-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            width: 100%;
+            max-width: 360px;
+            margin-bottom: 24px;
+        }
+
+        .carrier-btn {
+            background: white;
+            border: 2px solid #cbd5e1;
+            border-radius: 16px;
+            padding: 16px 8px;
+            font-size: 16px;
+            font-weight: bold;
+            color: #334155;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .carrier-btn:active {
+            transform: scale(0.96);
+        }
+
+        .carrier-btn.selected {
+            border-color: #0284c7;
+            background: #e0f2fe;
+            color: #0369a1;
+            box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.3);
+        }
+
+        .start-btn {
+            width: 100%;
+            max-width: 360px;
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            color: white;
+            border: none;
+            padding: 18px;
+            border-radius: 50px;
+            font-size: 20px;
+            font-weight: 800;
+            cursor: pointer;
+            box-shadow: 0 8px 15px rgba(22, 163, 74, 0.3);
+            transition: transform 0.1s ease;
+        }
+
+        .start-btn:disabled {
+            background: #cbd5e1;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+
+        /* --- ゲーム画面 --- */
+        #game-screen {
+            padding: 0;
+            justify-content: flex-start;
+            background: linear-gradient(180deg, #0284c7 0%, #0f172a 100%);
+        }
+
+        #game-header {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            right: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        .stat-card {
+            background: rgba(15, 23, 42, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(8px);
+            padding: 8px 12px;
+            border-radius: 16px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: #94a3b8;
+            font-weight: bold;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 900;
+            color: #38bdf8;
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        /* 【変更】吹き出しのコンパクト化 */
+        .drop-hint {
+            position: absolute;
+            bottom: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.92);
+            color: #0f172a;
+            padding: 6px 16px;  /* 余白を縮小 */
+            border-radius: 20px;
+            font-size: 12px;     /* 文字サイズを小さく */
+            font-weight: 700;
+            pointer-events: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+            animation: bounce 1.5s infinite;
+            white-space: nowrap;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translate(-50%, 0); }
+            50% { transform: translate(-50%, -6px); }
+        }
+
+        /* --- リザルト＆ランキング画面 --- */
+        #result-screen {
+            background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);
+            text-align: center;
+            justify-content: flex-start;
+            padding-top: 24px;
+            padding-bottom: 24px;
+        }
+
+        .result-title {
+            font-size: 15px;
+            color: #16a34a;
+            font-weight: bold;
+        }
+
+        .result-rank {
+            font-size: 22px;
+            font-weight: 900;
+            color: #0f172a;
+            margin-bottom: 12px;
+        }
+
+        .score-box {
+            background: white;
+            border: 2px dashed #bbf7d0;
+            border-radius: 16px;
+            padding: 12px 20px;
+            width: 100%;
+            max-width: 360px;
+            margin-bottom: 12px;
+        }
+
+        .score-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 4px 0;
+            font-size: 15px;
+            color: #475569;
+        }
+
+        .score-row strong {
+            font-size: 20px;
+            color: #0284c7;
+        }
+
+        #name-entry-box {
+            background: #f0f9ff;
+            border: 2px solid #0284c7;
+            border-radius: 16px;
+            padding: 12px;
+            width: 100%;
+            max-width: 360px;
+            margin-bottom: 12px;
+            box-shadow: 0 4px 10px rgba(2, 132, 199, 0.15);
+        }
+
+        .entry-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #0369a1;
+            margin-bottom: 8px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .name-input {
+            flex: 1;
+            padding: 10px 14px;
+            border-radius: 25px;
+            border: 1px solid #cbd5e1;
+            font-size: 15px;
+            font-weight: bold;
+            outline: none;
+            user-select: text;
+            -webkit-user-select: text;
+        }
+
+        .save-btn {
+            background: #0284c7;
+            color: white;
+            border: none;
+            padding: 0 16px;
+            border-radius: 25px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .ranking-box {
+            background: white;
+            border-radius: 16px;
+            padding: 12px 16px;
+            width: 100%;
+            max-width: 360px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            margin-bottom: 16px;
+        }
+
+        .ranking-title {
+            font-size: 15px;
+            font-weight: 800;
+            color: #0f172a;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .ranking-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .ranking-table th {
+            color: #94a3b8;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .ranking-table td {
+            padding: 8px 4px;
+            border-bottom: 1px solid #f8fafc;
+            color: #334155;
+            font-weight: bold;
+        }
+
+        .rank-badge {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            line-height: 20px;
+            font-size: 11px;
+            color: white;
+            background: #cbd5e1;
+        }
+
+        .rank-1 .rank-badge { background: #eab308; }
+        .rank-2 .rank-badge { background: #94a3b8; }
+        .rank-3 .rank-badge { background: #d97706; }
+
+        .prize-notice {
+            background: #fef3c7;
+            border: 1px solid #fde047;
+            color: #854d0e;
+            padding: 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 16px;
+            width: 100%;
+            max-width: 360px;
+        }
+
+        .reset-btn {
+            background: #0284c7;
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+        }
+
+        /* --- 管理者設定モーダル --- */
+        #settings-modal {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(5px);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            padding: 24px;
+            width: 100%;
+            max-width: 360px;
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3);
+            text-align: center;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 800;
+            color: #0f172a;
+            margin-bottom: 16px;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 8px;
+        }
+
+        .survey-stats-box {
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .survey-stats-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #334155;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .survey-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            font-size: 13px;
+        }
+
+        .survey-list li {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px dashed #e2e8f0;
+            color: #475569;
+        }
+        .survey-list li:last-child {
+            border-bottom: none;
+        }
+        .survey-list li strong {
+            color: #0f172a;
+        }
+
+        .setting-item {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .setting-label {
+            font-size: 13px;
+            font-weight: bold;
+            color: #475569;
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .setting-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            user-select: text;
+            -webkit-user-select: text;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .danger-btn {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        
+        .warning-btn {
+            background: #f59e0b;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .close-modal-btn {
+            width: 100%;
+            background: #64748b;
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 15px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+
+    <!-- 1. アンケート画面 -->
+    <div id="survey-screen" class="screen">
+        <div class="badge" onclick="handleBadgeClick()">イベント来場者アンケート</div>
+        <h1>スマホつみつみタワー</h1>
+        <p class="subtitle">現在お使いの携帯会社をおしえてね！</p>
+
+        <div class="carrier-grid">
+            <button class="carrier-btn" onclick="selectCarrier(this, 'docomo')">📱 docomo</button>
+            <button class="carrier-btn" onclick="selectCarrier(this, 'au')">📱 au</button>
+            <button class="carrier-btn" onclick="selectCarrier(this, 'SoftBank')">📱 SoftBank</button>
+            <button class="carrier-btn" onclick="selectCarrier(this, 'Rakuten')">📱 楽天モバイル</button>
+            <button class="carrier-btn" onclick="selectCarrier(this, 'UQ/Ymobile')">📱 UQ/Y!mobile</button>
+            <button class="carrier-btn" onclick="selectCarrier(this, 'Other')">📱 その他/格安SIM</button>
+        </div>
+
+        <button id="survey-start-btn" class="start-btn" disabled onclick="startGame()">ゲームスタート！ 🚀</button>
+    </div>
+
+    <!-- 2. ゲーム画面 -->
+    <div id="game-screen" class="screen hidden">
+        <div id="game-header">
+            <div class="stat-card">
+                <div class="stat-label">つみあげた数</div>
+                <div id="score-count" class="stat-value">0 個</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">たかさ</div>
+                <div id="score-height" class="stat-value">0.0 m</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">のこり時間</div>
+                <div id="time-left" class="stat-value">45 秒</div>
+            </div>
+        </div>
+
+        <div id="canvas-container"></div>
+        <div class="drop-hint">👆 画面をタップしてスマホをおとそう！</div>
+    </div>
+
+    <!-- 3. リザルト＆ランキング画面 -->
+    <div id="result-screen" class="screen hidden">
+        <div class="result-title" id="game-end-reason">ゲーム終了！</div>
+        <div id="rank-title" class="result-rank">伝説のつみつみマスター</div>
+
+        <div class="score-box">
+            <div class="score-row">
+                <span>積み上げたスマホ:</span>
+                <strong id="final-count">0 個</strong>
+            </div>
+            <div class="score-row">
+                <span>記録した高さ:</span>
+                <strong id="final-height">0.0 m</strong>
+            </div>
+            <div class="score-row" style="font-size: 12px; color: #94a3b8; margin-top: 6px; border-top: 1px solid #f1f5f9; padding-top: 4px;">
+                <span>回答キャリア:</span>
+                <span id="selected-carrier-name" style="font-weight: bold; color: #334155;">-</span>
+            </div>
+        </div>
+
+        <div id="name-entry-box" class="hidden">
+            <div class="entry-title">🎉 TOP 5 入賞！お名前を登録してね</div>
+            <div class="input-group">
+                <input type="text" id="player-name-input" class="name-input" value="UQ太郎" maxlength="10">
+                <button class="save-btn" onclick="saveRankingEntry()">登録</button>
+            </div>
+        </div>
+
+        <div class="ranking-box">
+            <div class="ranking-title">🏆 本日のTOP 5 ランキング</div>
+            <table class="ranking-table">
+                <thead>
+                    <tr>
+                        <th style="width: 15%;">順位</th>
+                        <th style="width: 45%; text-align: left;">お名前</th>
+                        <th style="width: 20%;">記録</th>
+                        <th style="width: 20%;">高さ</th>
+                    </tr>
+                </thead>
+                <tbody id="ranking-list-body">
+                </tbody>
+            </table>
+        </div>
+
+        <div class="prize-notice">
+            🎁 この画面をスタッフに見せて景品を受け取ってね！
+        </div>
+
+        <button class="reset-btn" onclick="resetToSurvey()">次の人に交代する 🔄</button>
+    </div>
+
+    <!-- 4. 管理者設定モーダル -->
+    <div id="settings-modal" class="hidden">
+        <div class="modal-content">
+            <div class="modal-title">⚙️ 管理者設定</div>
+
+            <div class="survey-stats-box">
+                <div class="survey-stats-title">
+                    <span>📊 アンケート集計</span>
+                    <span id="survey-total-count" style="color: #0284c7;">計 0 人</span>
+                </div>
+                <ul class="survey-list" id="survey-stats-list">
+                </ul>
+            </div>
+
+            <div class="setting-item">
+                <label class="setting-label">1プレイの制限時間 (秒)</label>
+                <input type="number" id="setting-time-input" class="setting-input" value="45" min="10" max="180">
+            </div>
+
+            <div class="btn-group">
+                <button class="warning-btn" onclick="resetSurveyData()">🔄 アンケート集計のみリセット</button>
+                <button class="danger-btn" onclick="resetRankingData()">🗑️ ランキングデータを全消去</button>
+            </div>
+            
+            <button class="close-modal-btn" onclick="closeSettingsModal()">設定を保存して閉じる</button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    let selectedCarrier = null;
+    let gameTimer = null;
+    let gameDurationSetting = 45; 
+    let timeLeft = 45;
+    let stackedCount = 0;
+    let maxHeight = 0;
+    let maxRecordCount = 0;
+    let maxRecordHeight = 0;
+    let isGameOver = false;
+
+    let badgeClickCount = 0;
+    let badgeClickTimer = null;
+    let currentPendingScore = null;
+
+    const CARRIER_KEYS = ['docomo', 'au', 'SoftBank', 'Rakuten', 'UQ/Ymobile', 'Other'];
+
+    let Engine = Matter.Engine,
+        Render = Matter.Render,
+        Runner = Matter.Runner,
+        Bodies = Matter.Bodies,
+        Composite = Matter.Composite,
+        Body = Matter.Body,
+        Events = Matter.Events;
+
+    let engine, render, runner;
+    let cranePhone = null;
+    let craneAngle = 0;
+    let craneBaseY = 110;
+    let basePlatform = null;
+    let phoneBodies = [];
+
+    const BASE_PHONE_WIDTH = 121;  
+    const BASE_PHONE_HEIGHT = 56;  
+    
+    let currentCraneData = null;
+
+    const PHONE_STYLES = [
+        { frame: '#38bdf8', screenStart: '#0284c7', screenEnd: '#0f172a' },
+        { frame: '#f43f5e', screenStart: '#e11d48', screenEnd: '#881337' },
+        { frame: '#a855f7', screenStart: '#7e22ce', screenEnd: '#3b0764' },
+        { frame: '#34d399', screenStart: '#059669', screenEnd: '#064e3b' },
+        { frame: '#fbbf24', screenStart: '#d97706', screenEnd: '#451a03' }
+    ];
+
+    window.addEventListener('DOMContentLoaded', () => {
+        const savedTime = localStorage.getItem('smartphone_stacker_time');
+        if (savedTime) {
+            gameDurationSetting = parseInt(savedTime, 10);
+            document.getElementById('setting-time-input').value = gameDurationSetting;
+        }
+    });
+
+    function handleBadgeClick() {
+        badgeClickCount++;
+        clearTimeout(badgeClickTimer);
+
+        if (badgeClickCount >= 5) {
+            badgeClickCount = 0;
+            openSettingsModal();
+        } else {
+            badgeClickTimer = setTimeout(() => { badgeClickCount = 0; }, 2000);
+        }
+    }
+
+    function openSettingsModal() {
+        updateSurveyStatsDisplay();
+        document.getElementById('settings-modal').classList.remove('hidden');
+    }
+
+    function closeSettingsModal() {
+        const inputVal = parseInt(document.getElementById('setting-time-input').value, 10);
+        if (inputVal && inputVal > 0) {
+            gameDurationSetting = inputVal;
+            localStorage.setItem('smartphone_stacker_time', gameDurationSetting);
+        }
+        document.getElementById('settings-modal').classList.add('hidden');
+    }
+
+    function recordSurvey(carrier) {
+        let stats = getSurveyStats();
+        if (!stats[carrier]) stats[carrier] = 0;
+        stats[carrier]++;
+        localStorage.setItem('smartphone_stacker_survey', JSON.stringify(stats));
+    }
+
+    function getSurveyStats() {
+        const data = localStorage.getItem('smartphone_stacker_survey');
+        return data ? JSON.parse(data) : {};
+    }
+
+    function updateSurveyStatsDisplay() {
+        const stats = getSurveyStats();
+        let total = 0;
+        
+        CARRIER_KEYS.forEach(key => {
+            total += (stats[key] || 0);
+        });
+
+        document.getElementById('survey-total-count').innerText = `計 ${total} 人`;
+        const listUl = document.getElementById('survey-stats-list');
+        listUl.innerHTML = '';
+
+        if (total === 0) {
+            listUl.innerHTML = '<li>データがありません</li>';
+            return;
+        }
+
+        CARRIER_KEYS.forEach(key => {
+            const count = stats[key] || 0;
+            const percent = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+            let displayName = key;
+            if (key === 'Other') displayName = 'その他/格安SIM';
+            else if (key === 'Rakuten') displayName = '楽天モバイル';
+
+            const li = document.createElement('li');
+            li.innerHTML = `<span>📱 ${displayName}</span> <strong>${count} 人 <span style="color:#94a3b8; font-size:11px;">(${percent}%)</span></strong>`;
+            listUl.appendChild(li);
+        });
+    }
+
+    function resetSurveyData() {
+        if (confirm("アンケートの集計データのみをリセットしますか？（ランキングは消えません）")) {
+            localStorage.removeItem('smartphone_stacker_survey');
+            updateSurveyStatsDisplay();
+            alert("アンケート集計をリセットしました。");
+        }
+    }
+
+    function resetRankingData() {
+        if (confirm("ランキングデータをすべてクリアしますか？")) {
+            localStorage.removeItem('smartphone_stacker_rankings');
+            alert("ランキングをクリアしました。");
+        }
+    }
+
+    function createPhoneTexture(style, w, h) {
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        const r = Math.min(18, Math.floor(h / 2));
+
+        ctx.fillStyle = style.frame;
+        ctx.beginPath();
+        ctx.roundRect(0, 0, w, h, r);
+        ctx.fill();
+
+        ctx.fillStyle = '#000000';
+        ctx.beginPath();
+        ctx.roundRect(3, 3, w - 6, h - 6, Math.max(2, r - 2));
+        ctx.fill();
+
+        const grad = ctx.createLinearGradient(0, 0, w, h);
+        grad.addColorStop(0, style.screenStart);
+        grad.addColorStop(1, style.screenEnd);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.roundRect(6, 6, w - 12, h - 12, Math.max(2, r - 4));
+        ctx.fill();
+
+        const shine = ctx.createLinearGradient(0, 0, w, 0);
+        shine.addColorStop(0, 'rgba(255,255,255,0.35)');
+        shine.addColorStop(0.4, 'rgba(255,255,255,0.0)');
+        ctx.fillStyle = shine;
+        ctx.beginPath();
+        ctx.roundRect(6, 6, w - 12, h - 12, Math.max(2, r - 4));
+        ctx.fill();
+
+        ctx.fillStyle = '#000000';
+        ctx.beginPath();
+        ctx.roundRect(12, (h / 2) - 6, 7, 12, 3);
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.roundRect(w - 24, (h / 2) - 14, 15, 28, 5);
+        ctx.fill();
+
+        return canvas.toDataURL();
+    }
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playBeep(freq = 440, type = 'sine', duration = 0.1) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function selectCarrier(btn, carrier) {
+        document.querySelectorAll('.carrier-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        selectedCarrier = carrier;
+        document.getElementById('survey-start-btn').disabled = false;
+        playBeep(523, 'triangle', 0.08);
+    }
+
+    function startGame() {
+        if (selectedCarrier) {
+            recordSurvey(selectedCarrier);
+        }
+        
+        document.getElementById('survey-screen').classList.add('hidden');
+        document.getElementById('game-screen').classList.remove('hidden');
+        initGamePhysics();
+    }
+
+    function initGamePhysics() {
+        const container = document.getElementById('canvas-container');
+        container.innerHTML = '';
+
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+
+        engine = Engine.create({
+            gravity: { x: 0, y: 1.0 }
+        });
+
+        render = Render.create({
+            element: container,
+            engine: engine,
+            options: {
+                width: width,
+                height: height,
+                wireframes: false,
+                background: 'transparent'
+            }
+        });
+
+        basePlatform = Bodies.rectangle(width / 2, height - 120, 220, 32, {
+            isStatic: true,
+            friction: 1.0,
+            render: {
+                fillStyle: '#0284c7',
+                strokeStyle: '#38bdf8',
+                lineWidth: 3
+            }
+        });
+
+        Composite.add(engine.world, [basePlatform]);
+
+        craneBaseY = 110;
+        createCranePhone(width);
+
+        Render.run(render);
+        runner = Runner.create();
+        Runner.run(runner, engine);
+
+        craneAngle = 0;
+        Events.on(engine, 'beforeUpdate', function() {
+            if (cranePhone && !isGameOver) {
+                craneAngle += 0.035;
+                const swingX = (width / 2) + Math.sin(craneAngle) * (width * 0.3);
+                Body.setPosition(cranePhone, { x: swingX, y: craneBaseY });
+            }
+            cleanupOutOfBoundsPhones(width, height);
+            updateScoreAndCamera(width, height);
+        });
+
+        container.addEventListener('pointerdown', dropPhone);
+
+        timeLeft = gameDurationSetting; 
+        maxHeight = 0;
+        stackedCount = 0;
+        maxRecordCount = 0;
+        maxRecordHeight = 0;
+        phoneBodies = [];
+        isGameOver = false;
+        updateHeaderUI();
+
+        gameTimer = setInterval(() => {
+            timeLeft--;
+            updateHeaderUI();
+            if (timeLeft <= 0) {
+                endGame("タイムアップ！");
+            }
+        }, 1000);
+    }
+
+    function createCranePhone(width) {
+        const style = PHONE_STYLES[Math.floor(Math.random() * PHONE_STYLES.length)];
+
+        const scale = 0.70 + (Math.random() * 0.30);
+        const phoneW = Math.round(BASE_PHONE_WIDTH * scale);
+        const phoneH = Math.round(BASE_PHONE_HEIGHT * scale);
+
+        const textureUrl = createPhoneTexture(style, phoneW, phoneH);
+
+        currentCraneData = {
+            width: phoneW,
+            height: phoneH,
+            texture: textureUrl
+        };
+
+        cranePhone = Bodies.rectangle(width / 2, craneBaseY, phoneW, phoneH, {
+            isSensor: true,
+            isStatic: true,
+            render: {
+                sprite: {
+                    texture: textureUrl,
+                    xScale: 1.0,
+                    yScale: 1.0
+                }
+            }
+        });
+        Composite.add(engine.world, cranePhone);
+    }
+
+    function dropPhone() {
+        if (!cranePhone || !currentCraneData || isGameOver) return;
+        playBeep(330, 'sine', 0.1);
+
+        const currentPos = cranePhone.position;
+
+        Composite.remove(engine.world, cranePhone);
+        cranePhone = null;
+
+        const droppedPhone = Bodies.rectangle(currentPos.x, currentPos.y, currentCraneData.width, currentCraneData.height, {
+            restitution: 0.0,
+            friction: 1.0,
+            frictionStatic: 1.0,
+            frictionAir: 0.03,
+            density: 0.01,
+            chamfer: { radius: 6 },
+            render: {
+                sprite: {
+                    texture: currentCraneData.texture,
+                    xScale: 1.0,
+                    yScale: 1.0
+                }
+            }
+        });
+
+        phoneBodies.push(droppedPhone);
+        Composite.add(engine.world, droppedPhone);
+
+        setTimeout(() => {
+            if (!isGameOver) {
+                const container = document.getElementById('canvas-container');
+                createCranePhone(container.clientWidth);
+            }
+        }, 550);
+    }
+
+    function cleanupOutOfBoundsPhones(screenWidth, screenHeight) {
+        let hasDroppedOut = false;
+
+        for (let i = phoneBodies.length - 1; i >= 0; i--) {
+            const phone = phoneBodies[i];
+            const pos = phone.position;
+
+            const isOutLeft = pos.x < -150;
+            const isOutRight = pos.x > screenWidth + 150;
+            const isOutBottom = pos.y > basePlatform.position.y + 200;
+
+            if (isOutLeft || isOutRight || isOutBottom) {
+                Composite.remove(engine.world, phone);
+                phoneBodies.splice(i, 1);
+                playBeep(150, 'sawtooth', 0.12);
+                hasDroppedOut = true;
+            }
+        }
+
+        if (maxRecordCount >= 8 && hasDroppedOut) {
+            if (phoneBodies.length < maxRecordCount - 2) {
+                endGame("タワーが倒壊しました！");
+            }
+        }
+    }
+
+    function updateScoreAndCamera(screenWidth, screenHeight) {
+        let highestPoint = basePlatform.position.y - 16;
+        let validCount = 0;
+
+        phoneBodies.forEach(body => {
+            if (body.position.y < basePlatform.position.y && body.position.y > -3000) {
+                validCount++;
+                if (body.position.y < highestPoint) {
+                    highestPoint = body.position.y;
+                }
+            }
+        });
+
+        const pixelHeight = (basePlatform.position.y - 16) - highestPoint;
+        const meters = Math.max(0, (pixelHeight / 38)).toFixed(1);
+
+        stackedCount = validCount;
+        maxHeight = meters;
+
+        if (stackedCount > maxRecordCount) {
+            maxRecordCount = stackedCount;
+            maxRecordHeight = maxHeight;
+        }
+
+        document.getElementById('score-count').innerText = `${stackedCount} 個`;
+        document.getElementById('score-height').innerText = `${maxHeight} m`;
+
+        let zoomFactor = 1.0;
+        let cameraOffset = 0;
+
+        if (stackedCount >= 24) {
+            zoomFactor = 0.40;
+            cameraOffset = 220;
+        } else if (stackedCount >= 20) {
+            zoomFactor = 0.48;
+            cameraOffset = 180;
+        } else if (stackedCount >= 16) {
+            zoomFactor = 0.55;
+            cameraOffset = 150;
+        } else if (stackedCount >= 12) {
+            zoomFactor = 0.62;
+            cameraOffset = 120;
+        } else if (stackedCount >= 8) {
+            zoomFactor = 0.70;
+            cameraOffset = 90;
+        }
+
+        const viewWidth = screenWidth / zoomFactor;
+        const viewHeight = screenHeight / zoomFactor;
+        const targetCenterY = (screenHeight / 2) - cameraOffset;
+
+        Render.lookAt(render, {
+            min: { x: (screenWidth - viewWidth) / 2, y: targetCenterY - (viewHeight / 2) },
+            max: { x: (screenWidth + viewWidth) / 2, y: targetCenterY + (viewHeight / 2) }
+        });
+
+        craneBaseY = (targetCenterY - (viewHeight / 2)) + (110 / zoomFactor);
+    }
+
+    function updateHeaderUI() {
+        document.getElementById('time-left').innerText = `${timeLeft} 秒`;
+    }
+
+    function endGame(reasonText = "ゲーム終了！") {
+        if (isGameOver) return;
+        isGameOver = true;
+        clearInterval(gameTimer);
+
+        confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+        playBeep(660, 'triangle', 0.3);
+
+        const finalCountScore = Math.max(stackedCount, maxRecordCount);
+        const finalHeightScore = parseFloat(Math.max(maxHeight, maxRecordHeight)).toFixed(1);
+
+        let rankText = "スマホつみビギナー 🐣";
+        if (finalCountScore >= 20) rankText = "神業！伝説のスマホ建築士 👑";
+        else if (finalCountScore >= 12) rankText = "プロスマホタワー職人 🏆";
+        else if (finalCountScore >= 8) rankText = "スマホつみ名人 🌟";
+
+        document.getElementById('game-end-reason').innerText = reasonText;
+        document.getElementById('rank-title').innerText = rankText;
+        document.getElementById('final-count').innerText = `${finalCountScore} 個`;
+        document.getElementById('final-height').innerText = `${finalHeightScore} m`;
+        document.getElementById('selected-carrier-name').innerText = selectedCarrier || "未回答";
+
+        currentPendingScore = {
+            count: finalCountScore,
+            height: parseFloat(finalHeightScore),
+            carrier: selectedCarrier || '未回答'
+        };
+
+        checkAndDisplayRanking(currentPendingScore);
+
+        document.getElementById('game-screen').classList.add('hidden');
+        document.getElementById('result-screen').classList.remove('hidden');
+    }
+
+    function getRankings() {
+        const data = localStorage.getItem('smartphone_stacker_rankings');
+        return data ? JSON.parse(data) : [];
+    }
+
+    function checkAndDisplayRanking(scoreObj) {
+        const rankings = getRankings();
+        
+        let isEligible = false;
+        if (rankings.length < 5) {
+            isEligible = true;
+        } else {
+            const lowest = rankings[rankings.length - 1];
+            if (scoreObj.count > lowest.count || (scoreObj.count === lowest.count && scoreObj.height > lowest.height)) {
+                isEligible = true;
+            }
+        }
+
+        const nameEntryBox = document.getElementById('name-entry-box');
+        if (isEligible) {
+            nameEntryBox.classList.remove('hidden');
+            document.getElementById('player-name-input').value = "UQ太郎"; 
+        } else {
+            nameEntryBox.classList.add('hidden');
+        }
+
+        renderRankingTable(rankings);
+    }
+
+    function saveRankingEntry() {
+        if (!currentPendingScore) return;
+
+        const nameInput = document.getElementById('player-name-input').value.trim() || "UQ太郎";
+        const newEntry = {
+            name: nameInput,
+            count: currentPendingScore.count,
+            height: currentPendingScore.height,
+            carrier: currentPendingScore.carrier
+        };
+
+        let rankings = getRankings();
+        rankings.push(newEntry);
+
+        rankings.sort((a, b) => {
+            if (b.count !== a.count) return b.count - a.count;
+            return b.height - a.height;
+        });
+
+        rankings = rankings.slice(0, 5);
+        localStorage.setItem('smartphone_stacker_rankings', JSON.stringify(rankings));
+
+        document.getElementById('name-entry-box').classList.add('hidden');
+        currentPendingScore = null;
+        renderRankingTable(rankings);
+        playBeep(880, 'sine', 0.2);
+    }
+
+    function renderRankingTable(rankings) {
+        const tbody = document.getElementById('ranking-list-body');
+        tbody.innerHTML = '';
+
+        if (rankings.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="color: #94a3b8; padding: 12px;">ランキングデータがありません</td></tr>';
+            return;
+        }
+
+        rankings.forEach((entry, index) => {
+            const tr = document.createElement('tr');
+            tr.className = `rank-${index + 1}`;
+            tr.innerHTML = `
+                <td><span class="rank-badge">${index + 1}</span></td>
+                <td style="text-align: left;">${escapeHtml(entry.name)}</td>
+                <td style="color: #0284c7;">${entry.count}個</td>
+                <td style="color: #64748b;">${entry.height.toFixed(1)}m</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function escapeHtml(str) {
+        return str.replace(/[&<>"']/g, function(m) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+        });
+    }
+
+    function resetToSurvey() {
+        if (runner) Runner.stop(runner);
+        phoneBodies = [];
+        selectedCarrier = null;
+
+        document.querySelectorAll('.carrier-btn').forEach(b => b.classList.remove('selected'));
+        document.getElementById('survey-start-btn').disabled = true;
+
+        document.getElementById('result-screen').classList.add('hidden');
+        document.getElementById('survey-screen').classList.remove('hidden');
+    }
+</script>
+</body>
+</html>
